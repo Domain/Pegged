@@ -309,18 +309,6 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
             result ~= "
         static if (is(typeof(" ~ composed ~ ".forgetMemo)))
             " ~ composed ~ ".forgetMemo();";
-
-		import std.algorithm.iteration;
-		string[] visited = [];
-		foreach (cycle; grammarInfo.leftRecursiveCycles)
-			foreach (rule; cycle)
-				if (!visited.canFind(rule))
-				{
-					visited ~= rule;
-					result ~= "
-						blockMemo_" ~ rule ~ "_atPos.length = 0;";
-				}
-
         result ~= "
     }\n";
         return result;
