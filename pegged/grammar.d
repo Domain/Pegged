@@ -147,7 +147,7 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
         }
         return result.length > 0 ?
             "/** Rules that stop left-recursive cycles, followed by rules for which\n"
-            " *  memoization is blocked during recursion:\n" ~ result ~ "*/\n\n" : "";
+          ~ " *  memoization is blocked during recursion:\n" ~ result ~ "*/\n\n" : "";
     }
     size_t[] handledCycleIndices;
     // Detect interlocking cycles. Each cycle needs a different stopper.
@@ -269,7 +269,7 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
         foreach (rule; stoppers[stopper] ~ stopper)
             // TODO investigate if p.end is always the last element.
             result ~= "                    assert(blockMemo_" ~ rule ~ "_atPos.canFind(p.end));\n"
-                      "                    remove(blockMemo_" ~ rule ~ "_atPos, countUntil(blockMemo_" ~ rule ~ "_atPos, p.end));\n";
+                    ~ "                    remove(blockMemo_" ~ rule ~ "_atPos, countUntil(blockMemo_" ~ rule ~ "_atPos, p.end));\n";
         return result;
     }
 
@@ -283,7 +283,7 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
                 if (rule == name)
                     return
     "            if (blockMemo_" ~ name ~ "_atPos.canFind(p.end))\n"
-    "                return " ~ code ~ "(p);\n";
+  ~ "                return " ~ code ~ "(p);\n";
         return "";
     }
 
@@ -351,7 +351,9 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
                 result =
 "struct Generic" ~ shortGrammarName ~ "(TParseTree)
 {
+	import std.functional : toDelegate;
     import pegged.dynamic.grammar;
+	static import pegged.peg;
     struct " ~ grammarName ~ "\n    {
     enum name = \"" ~ shortGrammarName ~ "\";
     static ParseTree delegate(ParseTree)[string] before;
@@ -437,6 +439,7 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
 
     static bool isRule(string s)
     {
+		import std.algorithm : startsWith;
         return s.startsWith(\"" ~ shortGrammarName ~ ".\");
     }
 ";
@@ -497,40 +500,40 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
                 {
                     // General calling interface
                     result ~= "    static TParseTree opCall(TParseTree p)\n"
-                              "    {\n"
-                              "        TParseTree result = decimateTree(" ~ firstRuleName ~ "(p));\n"
-                              "        result.children = [result];\n"
-                              "        result.name = \"" ~ shortGrammarName ~ "\";\n"
-                              "        return result;\n"
-                              "    }\n\n"
-                              "    static TParseTree opCall(string input)\n"
-                              "    {\n";
+                            ~ "    {\n"
+                            ~ "        TParseTree result = decimateTree(" ~ firstRuleName ~ "(p));\n"
+                            ~ "        result.children = [result];\n"
+                            ~ "        result.name = \"" ~ shortGrammarName ~ "\";\n"
+                            ~ "        return result;\n"
+                            ~ "    }\n\n"
+                            ~ "    static TParseTree opCall(string input)\n"
+                            ~ "    {\n";
 
                     if (withMemo == Memoization.no)
                         result ~= "        forgetMemo();\n"
-                                  "        return " ~ shortGrammarName ~ "(TParseTree(``, false, [], input, 0, 0));\n"
-                                  "    }\n";
+                                ~ "        return " ~ shortGrammarName ~ "(TParseTree(``, false, [], input, 0, 0));\n"
+                                ~ "    }\n";
                     else
                         result ~= "        if(__ctfe)\n"
-                                  "        {\n"
-                                  "            return " ~ shortGrammarName ~ "(TParseTree(``, false, [], input, 0, 0));\n"
-                                  "        }\n"
-                                  "        else\n"
-                                  "        {\n"
-                                  "            forgetMemo();\n"
-                                  "            return " ~ shortGrammarName ~ "(TParseTree(``, false, [], input, 0, 0));\n"
-                                  "        }\n"
-                                  "    }\n";
+                                ~ "        {\n"
+                                ~ "            return " ~ shortGrammarName ~ "(TParseTree(``, false, [], input, 0, 0));\n"
+                                ~ "        }\n"
+                                ~ "        else\n"
+                                ~ "        {\n"
+                                ~ "            forgetMemo();\n"
+                                ~ "            return " ~ shortGrammarName ~ "(TParseTree(``, false, [], input, 0, 0));\n"
+                                ~ "        }\n"
+                                ~ "    }\n";
 
                     result ~= "    static string opCall(GetName g)\n"
-                              "    {\n"
-                              "        return \"" ~ shortGrammarName ~ "\";\n"
-                              "    }\n\n";
+                            ~ "    {\n"
+                            ~ "        return \"" ~ shortGrammarName ~ "\";\n"
+                            ~ "    }\n\n";
                 }
                 result ~= generateForgetMemo();
                 result ~= "    }\n" // end of grammar struct definition
-                          "}\n\n" // end of template definition
-                          "alias Generic" ~ shortGrammarName ~ "!(ParseTree)."
+                        ~ "}\n\n" // end of template definition
+                        ~ "alias Generic" ~ shortGrammarName ~ "!(ParseTree)."
                         ~ shortGrammarName ~ " " ~ shortGrammarName ~ ";\n\n";
                 break;
             case "Pegged.Definition":
@@ -583,7 +586,7 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
                 if (parameterizedRule)
                 {
                     result = "    template " ~ completeName ~ "\n"
-                             "    {\n";
+                           ~ "    {\n";
                     innerName ~= "\"" ~ shortName ~ "!(\" ~ ";
                     hookedName ~= "_" ~ to!string(p.children[0].children[1].children.length);
                     foreach(i,param; p.children[0].children[1].children)
@@ -603,96 +606,96 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
                 import std.algorithm.searching: canFind;
                 if (withMemo == Memoization.no)
                     result ~= "    static TParseTree " ~ shortName ~ "(TParseTree p)\n"
-                              "    {\n"
-                              "        if(__ctfe)\n"
-                              "        {\n"
+                            ~ "    {\n"
+                            ~ "        if(__ctfe)\n"
+                            ~ "        {\n"
                             ~ (stoppers.keys.canFind(shortName) ?
                               "            assert(false, \"" ~ shortName ~ " is left-recursive, which is not supported "
-                                                           "at compile-time. Consider using asModule().\");\n"
+                                                         ~ "at compile-time. Consider using asModule().\");\n"
                               :
                               "            return " ~ ctfeCode ~ "(p);\n"
                               )
                             ~ "        }\n"
-                              "        else\n"
-                              "        {\n"
+                            ~ "        else\n"
+                            ~ "        {\n"
                             ~ (stoppers.keys.canFind(shortName) ?
                               // This rule needs to prevent infinite left-recursion.
                               "            static TParseTree[size_t /*position*/] seed;\n"
-                              "            if (auto s = p.end in seed)\n"
-                              "                return *s;\n"
-                              "            auto current = fail(p);\n"
-                              "            seed[p.end] = current;\n"
-                              "            while(true)\n"
-                              "            {\n"
-                              "                auto result = " ~ code ~ "(p);\n"
+                            ~ "            if (auto s = p.end in seed)\n"
+                            ~ "                return *s;\n"
+                            ~ "            auto current = fail(p);\n"
+                            ~ "            seed[p.end] = current;\n"
+                            ~ "            while(true)\n"
+                            ~ "            {\n"
+                            ~ "                auto result = " ~ code ~ "(p);\n"
                             ~ (grammarInfo.ruleInfo[shortName].nullMatch == NullMatch.no ?
                               "                if (result.end > current.end)\n"
                               :
                               "                if (result.end > current.end ||\n"
-                              "                    (!current.successful && result.successful) /* null-match */)\n"
+                            ~ "                    (!current.successful && result.successful) /* null-match */)\n"
                               )
                             ~ "                {\n"
-                              "                    current = result;\n"
-                              "                    seed[p.end] = current;\n"
-                              "                } else {\n"
-                              "                    seed.remove(p.end);\n"
-                              "                    return current;\n"
-                              "                }\n"
-                              "            }\n"
+                            ~ "                    current = result;\n"
+                            ~ "                    seed[p.end] = current;\n"
+                            ~ "                } else {\n"
+                            ~ "                    seed.remove(p.end);\n"
+                            ~ "                    return current;\n"
+                            ~ "                }\n"
+                            ~ "            }\n"
                               :
                               // Possibly left-recursive rule, but infinite recursion is already prevented by another rule in the same cycle.
                               "            return " ~ code ~ "(p);\n"
                               )
                             ~ "        }\n"
-                              "    }\n"
-                              "    static TParseTree " ~ shortName ~ "(string s)\n"
-                              "    {\n"
-                              "        if(__ctfe)\n"
-                              "            return " ~ ctfeCode ~ "(TParseTree(\"\", false,[], s));\n"
-                              "        else\n"
-                              "        {\n"
-                              "            forgetMemo();\n"
-                              "            return " ~ code ~ "(TParseTree(\"\", false,[], s));\n"
-                              "        }\n"
-                              "    }\n";
+                            ~ "    }\n"
+                            ~ "    static TParseTree " ~ shortName ~ "(string s)\n"
+                            ~ "    {\n"
+                            ~ "        if(__ctfe)\n"
+                            ~ "            return " ~ ctfeCode ~ "(TParseTree(\"\", false,[], s));\n"
+                            ~ "        else\n"
+                            ~ "        {\n"
+                            ~ "            forgetMemo();\n"
+                            ~ "            return " ~ code ~ "(TParseTree(\"\", false,[], s));\n"
+                            ~ "        }\n"
+                            ~ "    }\n";
                 else // Memoization.yes
                     result ~= "    static TParseTree " ~ shortName ~ "(TParseTree p)\n"
-                              "    {\n"
-                              "        if(__ctfe)\n"
-                              "        {\n"
+                            ~ "    {\n"
+                            ~ "        if(__ctfe)\n"
+                            ~ "        {\n"
                             ~ (stoppers.keys.canFind(shortName) ?
                               "            assert(false, \"" ~ shortName ~ " is left-recursive, which is not supported "
-                                                           "at compile-time. Consider using asModule().\");\n"
+                                                         ~ "at compile-time. Consider using asModule().\");\n"
                               :
                               "            return " ~ ctfeCode ~ "(p);\n"
                               )
                             ~ "        }\n"
-                              "        else\n"
-                              "        {\n"
+                            ~ "        else\n"
+                            ~ "        {\n"
                             ~ (stoppers.keys.canFind(shortName) ?
                               // This rule needs to prevent infinite left-recursion.
                               "            static TParseTree[size_t /*position*/] seed;\n"
-                              "            if (auto s = p.end in seed)\n"
-                              "                return *s;\n"
-                              "            if (" ~ shouldMemoLeftRecursion(shortName) ~ ")\n"
-                              "                if (auto m = tuple(" ~ innerName ~ ", p.end) in memo)\n"
-                              "                    return *m;\n"
-                              "            auto current = fail(p);\n"
-                              "            seed[p.end] = current;\n"
-                            ~ blockMemoForLeftRecursion(shortName) ~
-                              "            while (true)\n"
-                              "            {\n"
-                              "                auto result = " ~ code ~ "(p);\n"
+                            ~ "            if (auto s = p.end in seed)\n"
+                            ~ "                return *s;\n"
+                            ~ "            if (" ~ shouldMemoLeftRecursion(shortName) ~ ")\n"
+                            ~ "                if (auto m = tuple(" ~ innerName ~ ", p.end) in memo)\n"
+                            ~ "                    return *m;\n"
+                            ~ "            auto current = fail(p);\n"
+                            ~ "            seed[p.end] = current;\n"
+                            ~ blockMemoForLeftRecursion(shortName)
+                            ~ "            while (true)\n"
+                            ~ "            {\n"
+                            ~ "                auto result = " ~ code ~ "(p);\n"
                             ~ (grammarInfo.ruleInfo[shortName].nullMatch == NullMatch.no ?
                               "                if (result.end > current.end)\n"
                               :
                               "                if (result.end > current.end ||\n"
-                              "                    (!current.successful && result.successful) /* null-match */)\n"
+                            ~ "                    (!current.successful && result.successful) /* null-match */)\n"
                               )
                             ~ "                {\n"
-                              "                    current = result;\n"
-                              "                    seed[p.end] = current;\n"
-                              "                } else {\n"
+                            ~ "                    current = result;\n"
+                            ~ "                    seed[p.end] = current;\n"
+                            ~ "                } else {\n"
                                                    // Since seed is local, it cannot be reset between parses the way memo is reset.
                                                    // We can get away with this by removing elements from it, done below, so that
                                                    // seed is empty again when left-recursion has ended and all recursive calls have
@@ -700,43 +703,43 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
                                                    // disadvantage is that seed doesn't memoize the final result, so that must be taken
                                                    // care of by memo. Note that p.end remains constant for the course of recursion,
                                                    // and the length of seed only grows when nested recursion occurs.
-                              "                    seed.remove(p.end);\n"
-                            ~ unblockMemoForLeftRecursion(shortName) ~
-                              "                    memo[tuple(" ~ innerName ~ ", p.end)] = current;\n"
-                              "                    return current;\n"
-                              "                }\n"
-                              "            }\n"
+                            ~ "                    seed.remove(p.end);\n"
+                            ~ unblockMemoForLeftRecursion(shortName)
+                            ~ "                    memo[tuple(" ~ innerName ~ ", p.end)] = current;\n"
+                            ~ "                    return current;\n"
+                            ~ "                }\n"
+                            ~ "            }\n"
                               :
                               // Possibly left-recursive rule, but infinite recursion is already prevented by another rule in the same cycle.
                               maybeBlockedMemo(shortName, code)
                             ~ "            if (auto m = tuple(" ~ innerName ~ ", p.end) in memo)\n"
-                              "                return *m;\n"
-                              "            else\n"
-                              "            {\n"
-                              "                TParseTree result = " ~ code ~ "(p);\n"
-                              "                memo[tuple(" ~ innerName ~ ", p.end)] = result;\n"
-                              "                return result;\n"
-                              "            }\n"
+                            ~ "                return *m;\n"
+                            ~ "            else\n"
+                            ~ "            {\n"
+                            ~ "                TParseTree result = " ~ code ~ "(p);\n"
+                            ~ "                memo[tuple(" ~ innerName ~ ", p.end)] = result;\n"
+                            ~ "                return result;\n"
+                            ~ "            }\n"
                               )
                             ~ "        }\n"
-                              "    }\n\n"
-                              "    static TParseTree " ~ shortName ~ "(string s)\n"
-                              "    {\n"
-                              "        if(__ctfe)\n"
-                              "        {\n"
-                              "            return " ~ ctfeCode ~ "(TParseTree(\"\", false,[], s));\n"
-                              "        }\n"
-                              "        else\n"
-                              "        {\n"
-                              "            forgetMemo();\n"
-                              "            return " ~ code ~ "(TParseTree(\"\", false,[], s));\n"
-                              "        }\n"
-                              "    }\n";
+                            ~ "    }\n\n"
+                            ~ "    static TParseTree " ~ shortName ~ "(string s)\n"
+                            ~ "    {\n"
+                            ~ "        if(__ctfe)\n"
+                            ~ "        {\n"
+                            ~ "            return " ~ ctfeCode ~ "(TParseTree(\"\", false,[], s));\n"
+                            ~ "        }\n"
+                            ~ "        else\n"
+                            ~ "        {\n"
+                            ~ "            forgetMemo();\n"
+                            ~ "            return " ~ code ~ "(TParseTree(\"\", false,[], s));\n"
+                            ~ "        }\n"
+                            ~ "    }\n";
 
                     result ~= "    static string " ~ shortName ~ "(GetName g)\n"
-                              "    {\n"
-                              "        return \"" ~ propagatedName ~ "." ~ innerName[1..$-1] ~ "\";\n"
-                              "    }\n\n";
+                            ~ "    {\n"
+                            ~ "        return \"" ~ propagatedName ~ "." ~ innerName[1..$-1] ~ "\";\n"
+                            ~ "    }\n\n";
 
                 if (parameterizedRule)
                     result ~= "    }\n";
@@ -768,7 +771,11 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
                 result = p.matches[0] ~ " = " ~ generateCode(p.children[1]);
                 break;
             case "Pegged.Expression":
-                if (p.children.length > 1) // OR expression
+                result ~= generateCode(p.children[0]);
+                break;
+            case "Pegged.FirstExpression",
+                 "Pegged.LongestExpression":
+                if (p.children.length > 1) // [LONGEST_]OR expression
                 {
                     // Keyword list detection: "abstract"/"alias"/...
                     bool isLiteral(ParseTree p)
@@ -797,13 +804,13 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
                     }
                     else
                     {
-                        result = "pegged.peg.or!(";
+                        result = p.name == "Pegged.FirstExpression" ? "pegged.peg.or!(" : "pegged.peg.longest_match!(";
                         foreach(seq; p.children)
                             result ~= generateCode(seq) ~ ", ";
                         result = result[0..$-2] ~ ")";
                     }
                 }
-                else // One child -> just a sequence, no need for a or!( , )
+                else // One child -> just a sequence, no need for an or!( , )
                 {
                     result = generateCode(p.children[0]);
                 }
@@ -903,7 +910,7 @@ string grammar(Memoization withMemo = Memoization.yes)(string definition)
                         result ~= generateCode(seq) ~ ", ";
                     result = result[0..$-2] ~ ")";
                 }
-                else // One child -> just a sequence, no need for a or!( , )
+                else // One child -> just a sequence, no need for an or!( , )
                 {
                     result = generateCode(p.children[0]);
                 }
@@ -2755,6 +2762,7 @@ unittest // Memoization reset in composed grammars. Issue #162
 unittest // Test lambda syntax in semantic actions
 {
     import std.array;
+	import std.string : strip;
 
     auto actions = [
 
@@ -2885,12 +2893,13 @@ unittest // Test lambda syntax in semantic actions
 
         assert(p.successful);
 
-        auto action = p.children[0].children[1]
-                                   .children[2]
-                                   .children[0]
-                                   .children[0]
-                                   .children[0]
-                                   .children[1];
+        auto action = p.children[0].children[1]     // Pegged.Definition
+                                   .children[2]     // Pegged.Expression
+                                   .children[0]     // Pegged.FirstExpression
+                                   .children[0]     // Pegged.Sequence
+                                   .children[0]     // Pegged.Prefix
+                                   .children[0]     // Pegged.Suffix
+                                   .children[1];    // Pegged.Action
 
         assert(action.matches.length == results[idx].length);
         foreach(i, s; action.matches)

@@ -25,7 +25,7 @@ import std.conv;
 import std.string: strip;
 import std.typetuple;
 
-private string stringified(string inp)
+package string stringified(string inp)
 {
     import std.format : format;
     return format(`%(%s%)`, (&inp)[0..1]);
@@ -37,8 +37,8 @@ version (tracer)
     import std.algorithm.comparison : min;
 
     // Function pointers.
-    private static bool function(string ruleName) traceConditionFunction;
-    private static bool delegate(string ruleName) traceConditionDelegate;
+    private static bool function(string ruleName, const ref ParseTree p) traceConditionFunction;
+    private static bool delegate(string ruleName, const ref ParseTree p) traceConditionDelegate;
     private static int traceLevel;
     private static bool traceBlocked;
     private static bool logTraceLevel = false;
@@ -55,14 +55,14 @@ version (tracer)
             traceLevel--;
     }
 
-    private bool shouldTrace(string ruleName)
+    private bool shouldTrace(string ruleName, const ref ParseTree p)
     {
         if (__ctfe || traceBlocked)
             return false;
         if (traceConditionDelegate != null)
-            return traceConditionDelegate(ruleName);
+            return traceConditionDelegate(ruleName, p);
         if (traceConditionFunction != null)
-            return traceConditionFunction(ruleName);
+            return traceConditionFunction(ruleName, p);
         return false;
     }
 
@@ -81,14 +81,14 @@ version (tracer)
      + setTraceConditionFunction(ruleName => ruleName.startsWith("MyGrammar"));
      + ---
      +/
-    void setTraceConditionFunction(bool delegate(string ruleName) condition)
+    void setTraceConditionFunction(bool delegate(string ruleName, const ref ParseTree p) condition)
     {
         traceConditionDelegate = condition;
         traceConditionFunction = null;
     }
 
     /// ditto
-    void setTraceConditionFunction(bool function(string ruleName) condition)
+    void setTraceConditionFunction(bool function(string ruleName, const ref ParseTree p) condition)
     {
         traceConditionFunction = condition;
         traceConditionDelegate = null;
@@ -100,7 +100,7 @@ version (tracer)
      */
     void traceAll()
     {
-        setTraceConditionFunction(string => true);
+        setTraceConditionFunction(function(string ruleName, const ref ParseTree p) {return true;});
     }
 
     /** Do not trace any rules. */
@@ -118,7 +118,7 @@ version (tracer)
         string result;
         for (auto i = 1; i <= traceLevel; i++)
             result ~= format("%d|", i);
-        result ~= format(" (l:%d, c:%d)\t", pos.line, pos.col) ~
+        result ~= format(" (l:%d, c:%d, i:%d)\t", pos.line + 1, pos.col + 1, pos.index) ~
             expression.stringified ~ " considering rule " ~ name.stringified ~ " on " ~
             p.input[p.end .. min(p.input.length, p.end + inputLength)].stringified ~
             (p.end + inputLength > p.input.length ? "" : "...");
@@ -140,11 +140,11 @@ version (tracer)
             string consumed;
             foreach (match; p.matches)
                 consumed ~= match;
-            result ~= format(" (l:%d, c:%d)\t", pos.line, pos.col) ~ name.stringified ~ " SUCCEEDED on " ~
+            result ~= format(" (l:%d, c:%d, i:%d)\t", pos.line + 1, pos.col + 1, pos.index) ~ name.stringified ~ " SUCCEEDED on " ~
                 consumed.stringified;
         }
         else
-            result ~= format(" (l:%d, c:%d)\t", pos.line, pos.col) ~ name.stringified ~ " FAILED on " ~
+            result ~= format(" (l:%d, c:%d, i:%d)\t", pos.line + 1, pos.col + 1, pos.index) ~ name.stringified ~ " FAILED on " ~
                 p.input[p.end .. min(p.input.length, p.end + inputLength)].stringified ~
                 (p.end + inputLength > p.input.length ? "" : "...");
         return result;
@@ -164,6 +164,8 @@ version (tracer)
         {
             super(fn);
         }
+        import std.concurrency : Tid;
+        import std.datetime : SysTime;
         override protected void beginLogMsg(string file, int line, string funcName,
             string prettyFuncName, string moduleName, LogLevel logLevel,
             Tid threadId, SysTime timestamp, Logger logger)
@@ -343,7 +345,7 @@ bool softCompare(ParseTree p1, ParseTree p2)
         && p1.matches == p2.matches
         && p1.begin == p2.begin
         && p1.end == p2.end
-        && std.algorithm.equal!(softCompare)(p1.children, p2.children); // the same for children
+        && equal!(softCompare)(p1.children, p2.children); // the same for children
 }
 
 unittest // softCompare
@@ -384,29 +386,25 @@ assert(position("abc
 */
 Position position(string s)
 {
-    size_t col, line, index;
-    version (tracer)
-    {
-        // Do not trace the eol scan below, prevent recursion.
-        traceBlocked = true;
-    }
+    size_t col, line, index, prev_i;
+    char prev_c;
     foreach(i,c; s)
     {
-        if (eol(ParseTree("", false, [], s, 0,i)).successful)
+        if ((c == '\n' && !(i == prev_i + 1 && prev_c == '\r')) ||  // new line except when directly following a carriage return.
+             c == '\r')
         {
             col = 0;
             ++line;
             ++index;
+            prev_i = i;
+            prev_c = c;
         }
         else
         {
-            ++col;
+            if (c != '\n')
+                ++col;
             ++index;
         }
-    }
-    version (tracer)
-    {
-        traceBlocked = false;
     }
 
     return Position(line,col,index);
@@ -436,6 +434,7 @@ unittest
 
 
 ") == Position(3,0,3), "Four lines, all empty.");
+    assert(position("one\r\ntwo\r\nthree") == Position(2, 5, 15), "Three lines, DOS line endings");
 }
 
 string getName(alias expr)() @property
@@ -1215,7 +1214,7 @@ template and(rules...) if (rules.length > 0)
         {
             version (tracer)
             {
-                if (shouldTrace(getName!(r)()))
+                if (shouldTrace(getName!(r)(), p))
                     trace(traceMsg(result, name, getName!(r)()));
             }
             ParseTree temp = r(result);
@@ -1240,7 +1239,7 @@ template and(rules...) if (rules.length > 0)
                     result.matches ~= temp.matches[$-1];
                 version (tracer)
                 {
-                    if (shouldTrace(getName!(r)()))
+                    if (shouldTrace(getName!(r)(), p))
                         trace(traceResultMsg(result, getName!(r)()));
                     decTraceLevel();
                 }
@@ -1251,7 +1250,7 @@ template and(rules...) if (rules.length > 0)
         version (tracer)
         {
             foreach(i, r; rules)
-                if (shouldTrace(getName!(r)()))
+                if (shouldTrace(getName!(r)(), p))
                 {
                     trace(traceResultMsg(result, name));
                     break;
@@ -1455,7 +1454,7 @@ template or(rules...) if (rules.length > 0)
         {
             version (tracer)
             {
-                if (shouldTrace(getName!(r)()))
+                if (shouldTrace(getName!(r)(), p))
                     trace(traceMsg(p, name, getName!(r)()));
             }
             ParseTree temp = r(p);
@@ -1465,7 +1464,7 @@ template or(rules...) if (rules.length > 0)
                 temp.name = name;
                 version (tracer)
                 {
-                    if (shouldTrace(getName!(r)()))
+                    if (shouldTrace(getName!(r)(), p))
                         trace(traceResultMsg(temp, getName!(r)()));
                     decTraceLevel();
                 }
@@ -1475,7 +1474,7 @@ template or(rules...) if (rules.length > 0)
             {
                 version (tracer)
                 {
-                    if (shouldTrace(getName!(r)()))
+                    if (shouldTrace(getName!(r)(), p))
                         trace(traceResultMsg(temp, getName!(r)()));
                 }
                 enum errName = " (" ~ getName!(r)() ~")";
@@ -1602,6 +1601,208 @@ unittest // 'or' unit test
     assert(result.matches ==
     [ "a char between 'a' and 'b' (charRange!('a','b')) or a char between 'c' and 'd' (charRange!('c','d'))"]
                              , "or!([a-b],[c-d]) error message.");
+}
+
+/**
+Basic operator: it matches if one of its subrules (stored in the rules template parameter tuple) match
+the input. All subrules are tested and the one producing the longest match is taken.
+
+The longest matching subrule's parse tree is stored as its only child and its matches field
+will contain all the subrule matches, in order.
+*/
+template longest_match(rules...) if (rules.length > 0)
+{
+    string ctfeGetNameOr()
+    {
+        string name = "longest_match!(";
+        foreach(i,rule; rules)
+            name ~= getName!(rule)
+                    ~ (i < rules.length -1 ? ", " : "");
+        name ~= ")";
+        return name;
+    }
+
+    enum name = ctfeGetNameOr();
+
+    ParseTree longest_match(ParseTree p)
+    {
+        // error-management
+        ParseTree longest, longestFail = ParseTree(name, false, [], p.input, p.end, 0);
+        string[] errorStrings;
+        size_t errorStringChars;
+        string orErrorString;
+
+        ParseTree[rules.length] results;
+        string[rules.length] names;
+        size_t[rules.length] failedLength;
+        size_t maxFailedLength;
+
+        version (tracer)
+        {
+            incTraceLevel();
+        }
+
+        // Real 'longest_match' loop
+        foreach(i,r; rules)
+        {
+            version (tracer)
+            {
+                if (shouldTrace(getName!(r)(), p))
+                    trace(traceMsg(p, name, getName!(r)()));
+            }
+            ParseTree temp = r(p);
+            version (tracer)
+            {
+                if (shouldTrace(getName!(r)(), p))
+                    trace(traceResultMsg(temp, getName!(r)()));
+            }
+
+            if (temp.successful)
+            {
+                if (temp.end > longest.end)
+                    longest = temp;
+                // Else, this rule parsed less input than another one: we discard it.
+            }
+            else
+            {
+                enum errName = " (" ~ getName!(r)() ~")";
+                failedLength[i] = temp.end;
+                if (temp.end >= longestFail.end)
+                {
+                    maxFailedLength = temp.end;
+                    longestFail = temp;
+                    names[i] = errName;
+                    results[i] = temp;
+
+                    if (temp.end == longestFail.end)
+                        errorStringChars += (temp.matches.length > 0 ? temp.matches[$-1].length : 0) + errName.length + 4;
+                    else
+                        errorStringChars = (temp.matches.length > 0 ? temp.matches[$-1].length : 0) + errName.length + 4;
+                }
+                // Else, this error parsed less input than another one: we discard it.
+            }
+        }
+        version (tracer)
+        {
+            decTraceLevel();
+        }
+        if (longest.successful)
+        {
+            longest.children = [longest];
+            longest.name = name;
+            return longest;
+        }
+
+        // All subrules failed, we will take the longest match as the result
+        // If more than one node failed at the same (farthest) position, we concatenate their error messages
+
+        char[] errString;// = new char[](errorStringChars);
+        errString.length = errorStringChars;
+        uint start = 0;
+        foreach(i; 0..rules.length)
+        {
+            if (failedLength[i] == maxFailedLength && results[i].matches.length > 0)
+            {
+                auto temp = results[i];
+                auto len = temp.matches[$-1].length;
+                auto nlen = names[i].length;
+                errString[start .. start+len] = temp.matches[$-1][];
+                errString[start+len .. start+len+names[i].length] = names[i][];
+                errString[start+len+nlen .. start+len+nlen+4] = " or ";
+                start += len + names[i].length + 4;
+            }
+        }
+        orErrorString = cast(string)(errString[0..$-4]);
+
+        longestFail.matches = longestFail.matches.length == 0 ? [orErrorString] :
+                              longestFail.matches[0..$-1]  // discarding longestFail error message
+                            ~ [orErrorString];             // and replacing it by the new, concatenated one.
+        longestFail.name = name;
+        longestFail.begin = p.end;
+        return longestFail;
+    }
+
+    ParseTree longest_match(string input)
+    {
+        return .or!(rules)(ParseTree("",false,[],input));
+    }
+
+    string longest_match(GetName g)
+    {
+        return name;
+    }
+}
+
+unittest // 'longest_match' unit test
+{
+    alias charRange!('a','b') ab;
+    alias charRange!('c','d') cd;
+
+    alias longest_match!(ab) abOr;
+    alias longest_match!(ab,cd) abOrcd;
+
+    assert(getName!(ab)() == "charRange!('a','b')");
+    assert(getName!(cd)() == "charRange!('c','d')");
+
+    // These are the same tests as for 'or':
+
+    ParseTree input = ParseTree("",false,[], "abcdefghi");
+
+    ParseTree result = abOr(input);
+
+    assert(result.name == "longest_match!(charRange!('a','b'))", "or name test.");
+    assert(result.successful, "longest_match!([a-b]) parses 'abcdefghi'");
+    assert(result.matches == ["a"], "longest_match!([a-b]) matches 'a' at the beginning of 'abcdefghi'");
+    assert(result.end == input.end+1, "longest_match!([a-b]) advances the index by 'a' size (1).");
+    assert(result.children == [ab(input)], "longest_match!([a-b]) has one child: the one created by '[a-b]'.");
+
+    result = abOrcd(input);
+
+    assert(result.name == "longest_match!(charRange!('a','b'), charRange!('c','d'))", "or name test.");
+    assert(result.successful, "longest_match!([a-b],[c-d]) parses 'abcdefghi'");
+    assert(result.matches == ["a"], "longest_match!([a-b],[c-d]) matches 'a' at the beginning of 'abcdefghi'");
+    assert(result.end == input.end+1, "longest_match!([a-b],[c-d]) advances the index by 1 position.");
+
+    assert(result.children == [ab(input)], "longest_match!([a-b],[c-d]) has one child, created by [a-b].");
+
+    input.input = "cdefghi";
+
+    result = abOrcd(input);
+
+    assert(result.name == "longest_match!(charRange!('a','b'), charRange!('c','d'))", "or name test.");
+    assert(result.successful, "longest_match!([a-b],[c-d]) parses 'cdefghi'");
+    assert(result.matches == ["c"], "longest_match!([a-b],[c-d]) matches 'c' at the beginning of 'cdefghi'");
+    assert(result.end == input.end+1, "longest_match!([a-b],[c-d]) advances the index by 1 position.");
+
+    assert(result.children == [cd(input)], "longest_match!([a-b],[c-d]) has one child, created by [c-d].");
+
+    input.input = "_abcdefghi";
+
+    result = abOrcd(input);
+
+    assert(!result.successful, "longest_match!([a-b],[c-d]) fails on '_abcdefghi'");
+    assert(result.end == input.end+0, "longest_match!([a-b],[c-d]) does not advance the index.");
+    assert(result.matches ==
+           [ "a char between 'a' and 'b' (charRange!('a','b')) or a char between 'c' and 'd' (charRange!('c','d'))"]
+                             , "longest_match!([a-b],[c-d]) error message. |" ~ result.matches[0]~ "|");
+
+    input.input = "";
+
+    result = abOrcd(input);
+
+    assert(!result.successful, "longest_match!([a-b],[c-d]) fails on and empty input");
+    assert(result.end == input.end+0, "longest_match!([a-b],[c-d]) does not advance the index.");
+    assert(result.matches ==
+    [ "a char between 'a' and 'b' (charRange!('a','b')) or a char between 'c' and 'd' (charRange!('c','d'))"]
+                             , "longest_match!([a-b],[c-d]) error message.");
+
+    // Now test longest match behaviour:
+
+    input.input = "aaaccccb";
+    result =            or!(oneOrMore!(literal!("a")), and!(oneOrMore!(literal!("a")), literal!("cc")))(input);
+    assert(result.matches == ["a", "a", "a"], "or! takes the first matching rule.");
+    result = longest_match!(oneOrMore!(literal!("a")), and!(oneOrMore!(literal!("a")), literal!("cc")))(input);
+    assert(result.matches == ["a", "a", "a", "cc"], "longest_match! takes the longest matching rule.");
 }
 
 
@@ -1892,7 +2093,7 @@ template zeroOrMore(alias r)
         version (tracer)
         {
             incTraceLevel();
-            if (shouldTrace(getName!(r)()))
+            if (shouldTrace(getName!(r)(), p))
                 trace(traceMsg(result, name, getName!(r)()));
         }
         auto temp = r(result);
@@ -1905,7 +2106,7 @@ template zeroOrMore(alias r)
             result.end = temp.end;
             version (tracer)
             {
-                if (shouldTrace(getName!(r)()))
+                if (shouldTrace(getName!(r)(), p))
                     trace(traceMsg(result, name, getName!(r)()));
             }
             temp = r(result);
@@ -1913,7 +2114,7 @@ template zeroOrMore(alias r)
         result.successful = true;
         version (tracer)
         {
-            if (shouldTrace(getName!(r)()))
+            if (shouldTrace(getName!(r)(), p))
                 trace(traceResultMsg(result, getName!(r)()));
             decTraceLevel();
         }
@@ -2045,7 +2246,7 @@ template oneOrMore(alias r)
         version (tracer)
         {
             incTraceLevel();
-            if (shouldTrace(getName!(r)()))
+            if (shouldTrace(getName!(r)(), p))
                 trace(traceMsg(result, name, getName!(r)()));
         }
         auto temp = r(result);
@@ -2067,7 +2268,7 @@ template oneOrMore(alias r)
                 result.end = temp.end;
                 version (tracer)
                 {
-                    if (shouldTrace(getName!(r)()))
+                    if (shouldTrace(getName!(r)(), p))
                         trace(traceMsg(result, name, getName!(r)()));
                 }
                 temp = r(result);
@@ -2076,7 +2277,7 @@ template oneOrMore(alias r)
         }
         version (tracer)
         {
-            if (shouldTrace(getName!(r)()))
+            if (shouldTrace(getName!(r)(), p))
                 trace(traceResultMsg(result, getName!(r)()));
             decTraceLevel();
         }
@@ -2183,7 +2384,7 @@ template option(alias r)
     {
         version (tracer)
         {
-            if (shouldTrace(getName!(r)()))
+            if (shouldTrace(getName!(r)(), p))
                 trace(traceMsg(p, name, getName!(r)()));
         }
         ParseTree result = r(p);
@@ -2277,7 +2478,7 @@ template posLookahead(alias r)
     {
         version (tracer)
         {
-            if (shouldTrace(getName!(r)()))
+            if (shouldTrace(getName!(r)(), p))
                 trace(traceMsg(p, name, getName!(r)()));
         }
         ParseTree temp = r(p);
@@ -2368,7 +2569,7 @@ template negLookahead(alias r)
     {
         version (tracer)
         {
-            if (shouldTrace(getName!(r)()))
+            if (shouldTrace(getName!(r)(), p))
                 trace(traceMsg(p, name, getName!(r)()));
         }
         ParseTree temp = r(p);
@@ -3216,6 +3417,8 @@ mixin template decimateTree()
             ParseTree[] result;
             foreach(child; pt.children)
             {
+				import std.algorithm : startsWith;
+				
                 if (  (isRule(child.name) && child.matches.length != 0)
                    || !child.successful && child.children.length == 0)
                 {

@@ -8,7 +8,8 @@
         "pegged/peg.d",
         "pegged/grammar.d",
         "pegged/parser.d",
-	"pegged/introspection.d",
+        "pegged/introspection.d",
+        "pegged/tohtml.d",
         "pegged/dynamic/grammar.d",
         "pegged/dynamic/peg.d",
         "pegged/tester/grammartester.d",
@@ -17,5 +18,14 @@
     "importPaths": ["."],
     "dflags": ["-ignore"],
     "dflags-gdc": ["-ggdb"],
-    "dflags-ldc": ["-check-printf-calls"]
+    "dflags-ldc": ["-check-printf-calls"],
+    "configurations": [
+        {
+            "name": "default",
+        },
+        {
+            "name": "tracer",
+            "versions": ["tracer"],
+        }
+    ]
 }
